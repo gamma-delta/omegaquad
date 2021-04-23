@@ -1,0 +1,11 @@
+[package]
+name = "omegaquad"
+version = "0.1.0"
+authors = ["gamma-delta <29877714+gamma-delta@users.noreply.github.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+macroquad = "0.3.0"
+once_cell = "1.7.2"
