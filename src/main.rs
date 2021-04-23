@@ -6,6 +6,11 @@ use crate::modes::ModeLogo;
 
 use macroquad::prelude::*;
 
+use std::{
+    sync::{Arc, Barrier},
+    thread,
+};
+
 const WIDTH: f32 = 640.0;
 const HEIGHT: f32 = 480.0;
 const ASPECT_RATIO: f32 = WIDTH / HEIGHT;
@@ -27,33 +32,55 @@ fn window_conf() -> Conf {
 
 #[macroquad::main(window_conf)]
 async fn main() {
+    // The engine is multithreaded.
+    // Given a state S0, updating to S1 and drawing S0 happens at the same time.
+    // The state is sent down here
+    let (draw_tx, draw_rx) = crossbeam::channel::bounded(0);
+    // This barrier makes sure both threads finish their computation before going to the next frame
+    let frame_barrier = Arc::new(Barrier::new(2));
+    let draw_frame_barrier = frame_barrier.clone();
+
+    // Drawing must happen on the main thread (thanks macroquad...)
+    // so updating goes over here
     let mut globals = Globals::new().await;
     let mut mode_stack = vec![Gamemode::Logo(ModeLogo::new())];
+    let _update_handle = thread::spawn(move || {
+        loop {
+            // Clone the current state and send it off for drawing
+            draw_tx
+                .send((mode_stack.last().unwrap().clone(), globals.clone()))
+                .unwrap();
+
+            // Update the current state.
+            // To change state, return a non-None transition.
+            let transition = match mode_stack.last_mut().unwrap() {
+                Gamemode::Logo(mode) => mode.update(&mut globals),
+            };
+            match transition {
+                Transition::None => {}
+                Transition::Push(new_mode) => mode_stack.push(new_mode),
+                Transition::Pop => {
+                    if mode_stack.len() >= 2 {
+                        mode_stack.pop();
+                    }
+                }
+                Transition::Swap(new_mode) => {
+                    if !mode_stack.is_empty() {
+                        mode_stack.pop();
+                    }
+                    mode_stack.push(new_mode)
+                }
+            }
+
+            globals.frames_ran += 1;
+            frame_barrier.wait();
+        }
+    });
 
     let canvas = render_target(WIDTH as u32, HEIGHT as u32);
     canvas.texture.set_filter(FilterMode::Nearest);
-
     loop {
-        // Update the current state.
-        // To change state, return a non-None transition.
-        let transition = match mode_stack.last_mut().unwrap() {
-            Gamemode::Logo(mode) => mode.update(&mut globals),
-        };
-        match transition {
-            Transition::None => {}
-            Transition::Push(new_mode) => mode_stack.push(new_mode),
-            Transition::Pop => {
-                if mode_stack.len() >= 2 {
-                    mode_stack.pop();
-                }
-            }
-            Transition::Swap(new_mode) => {
-                if !mode_stack.is_empty() {
-                    mode_stack.pop();
-                }
-                mode_stack.push(new_mode)
-            }
-        }
+        let (mode, globals) = draw_rx.recv().unwrap();
 
         // These divides and multiplies are required to get the camera in the center of the screen
         // and having it fill everything.
@@ -64,10 +91,9 @@ async fn main() {
             ..Default::default()
         });
         clear_background(WHITE);
-
         // Draw the state.
         // Also do audio in the draw method, I guess, it doesn't really matter where you do it...
-        match mode_stack.last().unwrap() {
+        match mode {
             Gamemode::Logo(mode) => mode.draw(&globals),
         }
 
@@ -103,7 +129,7 @@ async fn main() {
             },
         );
 
-        globals.frames_ran += 1;
+        draw_frame_barrier.wait();
         next_frame().await
     }
 }
@@ -111,6 +137,7 @@ async fn main() {
 /// Different modes the game can be in.
 ///
 /// Add your states here.
+#[derive(Clone)]
 pub enum Gamemode {
     Logo(ModeLogo),
 }
@@ -128,6 +155,7 @@ pub enum Transition {
 }
 
 /// Global information useful for all modes
+#[derive(Clone)]
 pub struct Globals {
     assets: Assets,
     // at 2^64 frames, this will run out about when the sun dies!

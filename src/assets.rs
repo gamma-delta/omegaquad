@@ -8,6 +8,7 @@ use macroquad::{
 };
 use once_cell::sync::Lazy;
 
+#[derive(Clone)]
 pub struct Assets {
     pub textures: Textures,
     pub sounds: Sounds,
@@ -22,6 +23,7 @@ impl Assets {
     }
 }
 
+#[derive(Clone)]
 pub struct Textures {
     pub title_banner: Texture2D,
 }
@@ -34,6 +36,7 @@ impl Textures {
     }
 }
 
+#[derive(Clone)]
 pub struct Sounds {
     pub title_jingle: Sound,
 }

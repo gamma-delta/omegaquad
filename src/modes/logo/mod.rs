@@ -9,6 +9,7 @@ const BLADE_SPAN: f32 = BLADES as f32 * 2.0;
 
 const BANNER_DISPLAY_SIZE: f32 = WIDTH * 0.6;
 
+#[derive(Clone)]
 pub struct ModeLogo {
     frames_ran: u64,
 }
@@ -36,8 +37,7 @@ impl ModeLogo {
     pub fn draw(&self, globals: &Globals) {
         use macroquad::{audio::*, prelude::*};
 
-        // remember the frames are updated *before* drawing
-        if self.frames_ran == 1 {
+        if self.frames_ran == 0 {
             play_sound_once(globals.assets.sounds.title_jingle);
         }
 
