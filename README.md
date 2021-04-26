@@ -1,4 +1,4 @@
-# Megaquad
+# Omegaquad
 
 A framework for making games using Macroquad.
 
