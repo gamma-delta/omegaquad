@@ -1,3 +1,5 @@
+use macroquad::prelude::{is_mouse_button_down, MouseButton};
+
 use crate::{
     boilerplates::{FrameInfo, Gamemode, GamemodeDrawer, Globals, Transition},
     drawutils, HEIGHT, WIDTH,
@@ -34,7 +36,7 @@ impl Gamemode for ModeLogo {
     fn update(
         &mut self,
         globals: &mut Globals,
-        frame_info: FrameInfo,
+        _frame_info: FrameInfo,
     ) -> (Box<dyn GamemodeDrawer>, Transition) {
         if self.first_frame {
             self.first_frame = false;
@@ -42,12 +44,14 @@ impl Gamemode for ModeLogo {
             macroquad::audio::play_sound_once(globals.assets.sounds.title_jingle);
         }
 
-        let trans = if macroquad::time::get_time() - self.start_time < 5.0 {
-            Transition::None
-        } else {
+        let trans = if macroquad::time::get_time() - self.start_time > 5.0
+            || is_mouse_button_down(MouseButton::Left)
+        {
             // Put your "title screen" state here or something!
             // Right now it just loops
             Transition::Swap(Box::new(ModeLogo::new()))
+        } else {
+            Transition::None
         };
 
         // I am my own drawer
@@ -56,7 +60,7 @@ impl Gamemode for ModeLogo {
 }
 
 impl GamemodeDrawer for ModeLogo {
-    fn draw(&self, globals: &Globals, frame_info: FrameInfo) {
+    fn draw(&self, globals: &Globals, _frame_info: FrameInfo) {
         use macroquad::prelude::*;
 
         let time_ran = macroquad::time::get_time() - self.start_time;

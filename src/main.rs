@@ -1,17 +1,16 @@
 mod assets;
-use assets::Assets;
 use boilerplates::{FrameInfo, Gamemode, Globals, Transition};
+use drawutils::width_height_deficit;
 mod drawutils;
 mod modes;
 use crate::modes::ModeLogo;
 mod boilerplates;
 
-use macroquad::prelude::*;
+// `getrandom` doesn't support WASM so we use quadrand's rng for it.
+#[cfg(target_arch = "wasm32")]
+mod wasm_random_impl;
 
-use std::{
-    sync::{Arc, Barrier},
-    thread,
-};
+use macroquad::prelude::*;
 
 const WIDTH: f32 = 640.0;
 const HEIGHT: f32 = 480.0;
@@ -23,7 +22,7 @@ fn window_conf() -> Conf {
         window_title: if cfg!(debug_assertions) {
             concat!(env!("CARGO_CRATE_NAME"), " v", env!("CARGO_PKG_VERSION"))
         } else {
-            "Lunar State"
+            "Omegaquad Game!"
         }
         .to_owned(),
         fullscreen: false,
@@ -34,6 +33,16 @@ fn window_conf() -> Conf {
 
 #[macroquad::main(window_conf)]
 async fn main() {
+    gameloop().await;
+}
+
+/// Threaded version of main.
+///
+/// This runs your mode's Update method as much as it can per draw cycle.
+#[cfg(not(any(target_arch = "wasm32", not(feature = "thread_loop"))))]
+async fn gameloop() {
+    use std::{thread, time::Instant};
+
     // The engine is multithreaded.
     // Given a state S0, updating to S1 and drawing S0 happens at the same time.
     // The state is sent down here
@@ -50,7 +59,6 @@ async fn main() {
             frames_ran: 0,
         };
         loop {
-            use std::time::Instant;
             // The first loop, draw nothing.
             // Loop 2, update to 3 and draw 1.
             //
@@ -124,17 +132,7 @@ async fn main() {
 
         // Figure out the drawbox.
         // these are how much wider/taller the window is than the content
-        let (width_deficit, height_deficit) = if (screen_width() / screen_height()) > ASPECT_RATIO {
-            // it's too wide! put bars on the sides!
-            // the height becomes the authority on how wide to draw
-            let expected_width = screen_height() * ASPECT_RATIO;
-            (screen_width() - expected_width, 0.0f32)
-        } else {
-            // it's too tall! put bars on the ends!
-            // the width is the authority
-            let expected_height = screen_width() / ASPECT_RATIO;
-            (0.0f32, screen_height() - expected_height)
-        };
+        let (width_deficit, height_deficit) = width_height_deficit();
         draw_texture_ex(
             canvas.texture,
             width_deficit / 2.0,
@@ -150,6 +148,100 @@ async fn main() {
         );
 
         frame_info.frames_ran += 1;
+        next_frame().await
+    }
+}
+
+/// Unthreaded version of main.
+///
+/// This runs one update call, then one draw call.
+#[cfg(any(target_arch = "wasm32", not(feature = "thread_loop")))]
+async fn gameloop() {
+    // Drawing must happen on the main thread (thanks macroquad...)
+    // so updating goes over here
+    let mut globals = Globals::new().await;
+    let mut mode_stack: Vec<Box<dyn Gamemode>> = vec![Box::new(ModeLogo::new())];
+
+    let canvas = render_target(WIDTH as u32, HEIGHT as u32);
+    canvas.texture.set_filter(FilterMode::Nearest);
+    let mut frame_info = FrameInfo {
+        dt: 0.0,
+        frames_ran: 0,
+    };
+
+    let mut mouse_entropy = 0.0f64;
+    loop {
+        // To seed the RNG, spend a few frames accumulating mouse info
+        if frame_info.frames_ran <= 60 {
+            let (mx, my) = mouse_position();
+            // 7919 is the last prime on wikipedia's list of prime numbers
+            mouse_entropy = mouse_entropy.tan() + mx as f64 + my as f64 * 7919.0;
+            if frame_info.frames_ran == 60 {
+                macroquad::rand::srand(mouse_entropy.to_bits());
+            }
+        }
+
+        frame_info.dt = macroquad::time::get_frame_time();
+
+        // Update the current state.
+        // To change state, return a non-None transition.
+        let (drawer, transition) = mode_stack
+            .last_mut()
+            .unwrap()
+            .update(&mut globals, frame_info);
+        match transition {
+            Transition::None => {}
+            Transition::Push(new_mode) => mode_stack.push(new_mode),
+            Transition::Pop => {
+                if mode_stack.len() >= 2 {
+                    mode_stack.pop();
+                }
+            }
+            Transition::Swap(new_mode) => {
+                if !mode_stack.is_empty() {
+                    mode_stack.pop();
+                }
+                mode_stack.push(new_mode)
+            }
+        }
+
+        // These divides and multiplies are required to get the camera in the center of the screen
+        // and having it fill everything.
+        set_camera(&Camera2D {
+            render_target: Some(canvas),
+            zoom: vec2((WIDTH as f32).recip() * 2.0, (HEIGHT as f32).recip() * 2.0),
+            target: vec2(WIDTH as f32 / 2.0, HEIGHT as f32 / 2.0),
+            ..Default::default()
+        });
+        clear_background(WHITE);
+        // Draw the state.
+        // Also do audio in the draw method, I guess, it doesn't really matter where you do it...
+        drawer.draw(&globals, frame_info);
+
+        // Done rendering to the canvas; go back to our normal camera
+        // to size the canvas
+        set_default_camera();
+        clear_background(BLACK);
+
+        // Figure out the drawbox.
+        // these are how much wider/taller the window is than the content
+        let (width_deficit, height_deficit) = width_height_deficit();
+        draw_texture_ex(
+            canvas.texture,
+            width_deficit / 2.0,
+            height_deficit / 2.0,
+            WHITE,
+            DrawTextureParams {
+                dest_size: Some(vec2(
+                    screen_width() - width_deficit,
+                    screen_height() - height_deficit,
+                )),
+                ..Default::default()
+            },
+        );
+
+        frame_info.frames_ran += 1;
+        frame_info.dt = macroquad::time::get_frame_time();
         next_frame().await
     }
 }
