@@ -1,8 +1,10 @@
 mod assets;
 use assets::Assets;
+use boilerplates::{FrameInfo, Gamemode, Globals, Transition};
 mod drawutils;
 mod modes;
 use crate::modes::ModeLogo;
+mod boilerplates;
 
 use macroquad::prelude::*;
 
@@ -36,26 +38,34 @@ async fn main() {
     // Given a state S0, updating to S1 and drawing S0 happens at the same time.
     // The state is sent down here
     let (draw_tx, draw_rx) = crossbeam::channel::bounded(0);
-    // This barrier makes sure both threads finish their computation before going to the next frame
-    let frame_barrier = Arc::new(Barrier::new(2));
-    let draw_frame_barrier = frame_barrier.clone();
 
     // Drawing must happen on the main thread (thanks macroquad...)
     // so updating goes over here
     let mut globals = Globals::new().await;
-    let mut mode_stack = vec![Gamemode::Logo(ModeLogo::new())];
     let _update_handle = thread::spawn(move || {
+        let mut mode_stack: Vec<Box<dyn Gamemode>> = vec![Box::new(ModeLogo::new())];
+
+        let mut frame_info = FrameInfo {
+            dt: 0.0,
+            frames_ran: 0,
+        };
         loop {
-            // Clone the current state and send it off for drawing
-            draw_tx
-                .send((mode_stack.last().unwrap().clone(), globals.clone()))
-                .unwrap();
+            use std::time::Instant;
+            // The first loop, draw nothing.
+            // Loop 2, update to 3 and draw 1.
+            //
+            // A _
+            // B A
+            // C B ...
+
+            let frame_start = Instant::now();
 
             // Update the current state.
             // To change state, return a non-None transition.
-            let transition = match mode_stack.last_mut().unwrap() {
-                Gamemode::Logo(mode) => mode.update(&mut globals),
-            };
+            let (drawer, transition) = mode_stack
+                .last_mut()
+                .unwrap()
+                .update(&mut globals, frame_info);
             match transition {
                 Transition::None => {}
                 Transition::Push(new_mode) => mode_stack.push(new_mode),
@@ -72,15 +82,27 @@ async fn main() {
                 }
             }
 
-            globals.frames_ran += 1;
-            frame_barrier.wait();
+            // *Try* and send the stuff; only block and send it if it can.
+            // Otherwise back to the top.
+            // Ignore the error
+            let _ = draw_tx.try_send((drawer, globals.clone()));
+
+            frame_info.frames_ran += 1;
+            let frametime = frame_start.elapsed();
+            frame_info.dt = frametime.as_secs_f32();
         }
     });
 
     let canvas = render_target(WIDTH as u32, HEIGHT as u32);
     canvas.texture.set_filter(FilterMode::Nearest);
+    let mut frame_info = FrameInfo {
+        dt: 0.0,
+        frames_ran: 0,
+    };
     loop {
-        let (mode, globals) = draw_rx.recv().unwrap();
+        frame_info.dt = macroquad::time::get_frame_time();
+
+        let (drawer, globals) = draw_rx.recv().unwrap();
 
         // These divides and multiplies are required to get the camera in the center of the screen
         // and having it fill everything.
@@ -93,9 +115,7 @@ async fn main() {
         clear_background(WHITE);
         // Draw the state.
         // Also do audio in the draw method, I guess, it doesn't really matter where you do it...
-        match mode {
-            Gamemode::Logo(mode) => mode.draw(&globals),
-        }
+        drawer.draw(&globals, frame_info);
 
         // Done rendering to the canvas; go back to our normal camera
         // to size the canvas
@@ -129,46 +149,7 @@ async fn main() {
             },
         );
 
-        draw_frame_barrier.wait();
+        frame_info.frames_ran += 1;
         next_frame().await
-    }
-}
-
-/// Different modes the game can be in.
-///
-/// Add your states here.
-#[derive(Clone)]
-pub enum Gamemode {
-    Logo(ModeLogo),
-}
-
-/// Ways modes can transition
-pub enum Transition {
-    /// Do nothing
-    None,
-    /// Push this mode onto the stack
-    Push(Gamemode),
-    /// Pop the top mode off the stack
-    Pop,
-    /// Pop the top mode off and replace it with this
-    Swap(Gamemode),
-}
-
-/// Global information useful for all modes
-#[derive(Clone)]
-pub struct Globals {
-    assets: Assets,
-    // at 2^64 frames, this will run out about when the sun dies!
-    // 0.97 x expected sun lifetime!
-    // how exciting.
-    frames_ran: u64,
-}
-
-impl Globals {
-    async fn new() -> Self {
-        Self {
-            assets: Assets::init().await,
-            frames_ran: 0,
-        }
     }
 }
