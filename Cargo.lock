@@ -133,6 +133,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cogs-gamedev"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "088d80ccf2463b2001ec89a53e424e919348118fa63679ff14b1da775cf72a46"
+dependencies = [
+ "enum-map",
+]
+
+[[package]]
 name = "color_quant"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -326,6 +335,26 @@ name = "derivative"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "enum-map"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88acdb627a242ba1bf36653fa200f72c037ca3324e0710d1ac4fee809a1539cd"
+dependencies = [
+ "enum-map-derive",
+]
+
+[[package]]
+name = "enum-map-derive"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2dccd930f0c0a8968d873b10d3611f71bffc4dff84879dabf7b746b0686ea81"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -759,7 +788,9 @@ dependencies = [
 name = "omegaquad"
 version = "0.1.0"
 dependencies = [
+ "cogs-gamedev",
  "crossbeam",
+ "enum-map",
  "getrandom",
  "macroquad",
  "once_cell",

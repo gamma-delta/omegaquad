@@ -15,8 +15,10 @@ quad-rand = { version = "0.2.1", features = ["rand"] }
 getrandom = { version = "0.2.2", features = ["custom"] }
 
 crossbeam = { version = "0.8.0", optional = true }
+cogs-gamedev = "0.1.9"
+enum-map = "1.0.0"
 
 [features]
-default = ["thread_loop"]
+# default = ["thread_loop"]
 
 thread_loop = ["crossbeam"]

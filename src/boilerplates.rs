@@ -1,4 +1,4 @@
-use crate::assets::Assets;
+use crate::{assets::Assets, controls::InputSubscriber};
 
 /// Things the engine can update and draw
 pub trait Gamemode {
@@ -33,24 +33,26 @@ pub struct FrameInfo {
 pub enum Transition {
     /// Do nothing
     None,
+    /// Pop the top mode off and replace it with this
+    Swap(Box<dyn Gamemode>),
     /// Push this mode onto the stack
     Push(Box<dyn Gamemode>),
     /// Pop the top mode off the stack
     Pop,
-    /// Pop the top mode off and replace it with this
-    Swap(Box<dyn Gamemode>),
 }
 
 /// Global information useful for all modes
 #[derive(Clone)]
 pub struct Globals {
     pub assets: Assets,
+    pub controls: InputSubscriber,
 }
 
 impl Globals {
     pub async fn new() -> Self {
         Self {
             assets: Assets::init().await,
+            controls: InputSubscriber::new(),
         }
     }
 }
