@@ -1,9 +1,9 @@
+use crate::{assets::Assets, controls::InputSubscriber, HEIGHT, WIDTH};
+
 use macroquad::{
     camera::{set_camera, Camera2D},
     prelude::{render_target, vec2, FilterMode, Texture2D},
 };
-
-use crate::{assets::Assets, controls::InputSubscriber, HEIGHT, WIDTH};
 
 /// Things the engine can update and draw
 pub trait Gamemode {

@@ -4,16 +4,19 @@ mod controls;
 mod drawutils;
 mod modes;
 
-use boilerplates::{FrameInfo, Gamemode};
-use drawutils::width_height_deficit;
-use modes::ModeLogo;
 // `getrandom` doesn't support WASM so we use quadrand's rng for it.
 #[cfg(target_arch = "wasm32")]
 mod wasm_random_impl;
 
-use macroquad::prelude::*;
+use crate::{
+    assets::Assets,
+    boilerplates::{FrameInfo, Gamemode, RenderTargetStack},
+    controls::InputSubscriber,
+    drawutils::width_height_deficit,
+    modes::ModeLogo,
+};
 
-use crate::{assets::Assets, boilerplates::RenderTargetStack, controls::InputSubscriber};
+use macroquad::prelude::*;
 
 const WIDTH: f32 = 640.0;
 const HEIGHT: f32 = 480.0;

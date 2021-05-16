@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use cogs_gamedev::controls::EventInputHandler;
 use enum_map::Enum;
 use macroquad::{
@@ -9,6 +7,8 @@ use macroquad::{
         KeyCode, MouseButton,
     },
 };
+
+use std::collections::HashMap;
 
 /// The controls
 #[derive(Enum, Copy, Clone)]

@@ -1,12 +1,11 @@
-use cogs_gamedev::controls::InputHandler;
-use macroquad::prelude::{is_mouse_button_down, MouseButton};
-
 use crate::{
     assets::Assets,
     boilerplates::{FrameInfo, Gamemode, GamemodeDrawer, RenderTargetStack, Transition},
     controls::{Control, InputSubscriber},
     drawutils, HEIGHT, WIDTH,
 };
+
+use cogs_gamedev::controls::InputHandler;
 
 use std::f32::consts::TAU;
 

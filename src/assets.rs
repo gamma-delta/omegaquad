@@ -1,13 +1,13 @@
 #![allow(clippy::eval_order_dependence)]
 
-use std::path::PathBuf;
-
 use macroquad::{
     audio::{load_sound, Sound},
     miniquad::*,
     prelude::*,
 };
 use once_cell::sync::Lazy;
+
+use std::path::PathBuf;
 
 #[derive(Clone)]
 pub struct Assets {
