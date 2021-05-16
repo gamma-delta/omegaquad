@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use macroquad::{
     audio::{load_sound, Sound},
-    prelude::{load_texture, FilterMode, Texture2D},
+    miniquad::*,
+    prelude::*,
 };
 use once_cell::sync::Lazy;
 
@@ -52,7 +53,7 @@ impl Sounds {
 /// Path to the assets root
 static ASSETS_ROOT: Lazy<PathBuf> = Lazy::new(|| {
     if cfg!(target_arch = "wasm32") {
-        PathBuf::from("../assets")
+        PathBuf::from("./assets")
     } else if cfg!(debug_assertions) {
         PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/assets"))
     } else {
@@ -86,4 +87,31 @@ async fn sound(path: &str) -> Sound {
     )
     .await
     .unwrap()
+}
+
+async fn material_vert_frag(vert_stub: &str, frag_stub: &str, params: MaterialParams) -> Material {
+    let full_stub = ASSETS_ROOT.join("shaders");
+    let vert = load_string(
+        full_stub
+            .join(vert_stub)
+            .with_extension("vert")
+            .to_string_lossy()
+            .as_ref(),
+    )
+    .await
+    .unwrap();
+    let frag = load_string(
+        full_stub
+            .join(frag_stub)
+            .with_extension("frag")
+            .to_string_lossy()
+            .as_ref(),
+    )
+    .await
+    .unwrap();
+    load_material(&vert, &frag, params).unwrap()
+}
+
+async fn material(path_stub: &str, params: MaterialParams) -> Material {
+    material_vert_frag(path_stub, path_stub, params).await
 }

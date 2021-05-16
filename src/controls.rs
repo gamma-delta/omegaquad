@@ -12,7 +12,9 @@ use macroquad::{
 
 /// The controls
 #[derive(Enum, Copy, Clone)]
-pub enum Control {}
+pub enum Control {
+    Advance,
+}
 
 /// Combo keycode and mouse button code
 #[derive(Hash, PartialEq, Eq, Copy, Clone)]
@@ -43,6 +45,8 @@ impl InputSubscriber {
         let mut controls = HashMap::new();
 
         // Put your controls here
+        controls.insert(InputCode::Mouse(MouseButton::Left), Control::Advance);
+        controls.insert(InputCode::Key(KeyCode::Enter), Control::Advance);
 
         controls
     }

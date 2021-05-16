@@ -1,7 +1,10 @@
+use cogs_gamedev::controls::InputHandler;
 use macroquad::prelude::{is_mouse_button_down, MouseButton};
 
 use crate::{
-    boilerplates::{FrameInfo, Gamemode, GamemodeDrawer, Globals, Transition},
+    assets::Assets,
+    boilerplates::{FrameInfo, Gamemode, GamemodeDrawer, RenderTargetStack, Transition},
+    controls::{Control, InputSubscriber},
     drawutils, HEIGHT, WIDTH,
 };
 
@@ -35,41 +38,44 @@ impl ModeLogo {
 impl Gamemode for ModeLogo {
     fn update(
         &mut self,
-        globals: &mut Globals,
+        controls: &InputSubscriber,
         _frame_info: FrameInfo,
-    ) -> (Box<dyn GamemodeDrawer>, Transition) {
+        assets: &Assets,
+    ) -> Transition {
         if self.first_frame {
             self.first_frame = false;
             self.start_time = macroquad::time::get_time();
-            macroquad::audio::play_sound_once(globals.assets.sounds.title_jingle);
+            macroquad::audio::play_sound_once(assets.sounds.title_jingle);
         }
 
-        let trans = if macroquad::time::get_time() - self.start_time > 5.0
-            || is_mouse_button_down(MouseButton::Left)
+        if macroquad::time::get_time() - self.start_time > 5.0
+            || controls.clicked_down(Control::Advance)
         {
             // Put your "title screen" state here or something!
             // Right now it just loops
             Transition::Swap(Box::new(ModeLogo::new()))
         } else {
             Transition::None
-        };
+        }
+    }
 
+    fn get_draw_info(&mut self) -> Box<dyn GamemodeDrawer> {
         // I am my own drawer
-        (Box::new(self.clone()), trans)
+        Box::new(self.clone())
     }
 }
 
 impl GamemodeDrawer for ModeLogo {
-    fn draw(&self, globals: &Globals, _frame_info: FrameInfo) {
+    fn draw(&self, assets: &Assets, _frame_info: FrameInfo, _rts: &mut RenderTargetStack) {
         use macroquad::prelude::*;
+
+        let dark = drawutils::hexcolor(0x21181bff);
+        let med = drawutils::hexcolor(0xffee83ff);
+        let light = drawutils::hexcolor(0xfffab3ff);
 
         let time_ran = macroquad::time::get_time() - self.start_time;
 
-        let bg_color = if time_ran < 0.52 {
-            drawutils::hexcolor(0x21181bff)
-        } else {
-            drawutils::hexcolor(0xffee83ff)
-        };
+        let bg_color = if time_ran < 0.52 { dark } else { med };
         clear_background(bg_color);
 
         if time_ran > 1.38 {
@@ -83,7 +89,7 @@ impl GamemodeDrawer for ModeLogo {
                 let v2 = Vec2::from(theta2.sin_cos()) * WIDTH * 2.0;
                 let vc = Vec2::new(WIDTH / 2.0, HEIGHT / 2.0);
 
-                draw_triangle(v1, v2, vc, drawutils::hexcolor(0xfffab3ff));
+                draw_triangle(v1, v2, vc, light);
             }
         }
 
@@ -94,7 +100,7 @@ impl GamemodeDrawer for ModeLogo {
         };
         let sx = banner_idx as f32 * 64.0;
         draw_texture_ex(
-            globals.assets.textures.title_banner,
+            assets.textures.title_banner,
             WIDTH / 2.0 - BANNER_DISPLAY_SIZE / 2.0,
             HEIGHT / 2.0 - BANNER_DISPLAY_SIZE / 2.0,
             WHITE,

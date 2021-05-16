@@ -4,7 +4,7 @@ mod controls;
 mod drawutils;
 mod modes;
 
-use boilerplates::{FrameInfo, Gamemode, Globals, Transition};
+use boilerplates::{FrameInfo, Gamemode};
 use drawutils::width_height_deficit;
 use modes::ModeLogo;
 // `getrandom` doesn't support WASM so we use quadrand's rng for it.
@@ -13,11 +13,13 @@ mod wasm_random_impl;
 
 use macroquad::prelude::*;
 
+use crate::{assets::Assets, boilerplates::RenderTargetStack, controls::InputSubscriber};
+
 const WIDTH: f32 = 640.0;
 const HEIGHT: f32 = 480.0;
 const ASPECT_RATIO: f32 = WIDTH / HEIGHT;
 
-const UPDATES_PER_DRAW: usize = 100;
+const UPDATES_PER_DRAW: u64 = 100;
 const UPDATE_DT: f32 = 1.0 / (30.0 * UPDATES_PER_DRAW as f32);
 
 /// The `macroquad::main` macro uses this.
@@ -30,7 +32,7 @@ fn window_conf() -> Conf {
         }
         .to_owned(),
         fullscreen: false,
-        sample_count: 16,
+        sample_count: 64,
         ..Default::default()
     }
 }
@@ -42,56 +44,49 @@ async fn main() {
 
 /// Threaded version of main.
 ///
-/// This updates and draws at the same time
+/// This updates and draws at the same time.
 #[cfg(not(any(target_arch = "wasm32", not(feature = "thread_loop"))))]
 async fn gameloop() {
-    use std::{thread, time::Instant};
+    use crossbeam::channel::TryRecvError;
+    use std::thread;
+
+    let assets = Assets::init().await;
+    let assets = Box::leak(Box::new(assets)) as &'static Assets;
+    let mut controls = InputSubscriber::new();
 
     let (draw_tx, draw_rx) = crossbeam::channel::bounded(0);
 
     // Drawing must happen on the main thread (thanks macroquad...)
     // so updating goes over here
-    let mut globals = Globals::new().await;
     let _update_handle = thread::spawn(move || {
         let mut mode_stack: Vec<Box<dyn Gamemode>> = vec![Box::new(ModeLogo::new())];
-
         let mut frame_info = FrameInfo {
             dt: UPDATE_DT,
             frames_ran: 0,
         };
+
         loop {
+            controls.update();
             // Update the current state.
             // To change state, return a non-None transition.
-            let (drawer, transition) = mode_stack
+            let transition = mode_stack
                 .last_mut()
                 .unwrap()
-                .update(&mut globals, frame_info);
-            match transition {
-                Transition::None => {}
-                Transition::Push(new_mode) => mode_stack.push(new_mode),
-                Transition::Pop => {
-                    if mode_stack.len() >= 2 {
-                        mode_stack.pop();
-                    }
-                }
-                Transition::Swap(new_mode) => {
-                    if !mode_stack.is_empty() {
-                        mode_stack.pop();
-                    }
-                    mode_stack.push(new_mode)
-                }
-            }
+                .update(&controls, frame_info, assets);
+            transition.apply(&mut mode_stack);
 
+            #[allow(clippy::modulo_one)]
             if frame_info.frames_ran % UPDATES_PER_DRAW == 0 {
+                let drawer = mode_stack.last_mut().unwrap().get_draw_info();
+                // Wait on the draw thread to finish up drawing, then send.
                 // Ignore the error
-                let _ = draw_tx.send((drawer, globals.clone()));
+                let _ = draw_tx.send(drawer);
             }
             frame_info.frames_ran += 1;
         }
     });
 
-    let canvas = render_target(WIDTH as u32, HEIGHT as u32);
-    canvas.texture.set_filter(FilterMode::Nearest);
+    // Draw loop
     let mut frame_info = FrameInfo {
         dt: 0.0,
         frames_ran: 0,
@@ -99,7 +94,7 @@ async fn gameloop() {
     loop {
         frame_info.dt = macroquad::time::get_frame_time();
 
-        let (drawer, globals) = match draw_rx.try_recv() {
+        let drawer = match draw_rx.try_recv() {
             Ok(it) => it,
             Err(TryRecvError::Empty) => {
                 eprintln!("Waiting on updates!");
@@ -108,29 +103,22 @@ async fn gameloop() {
             Err(TryRecvError::Disconnected) => panic!("The draw channel closed!"),
         };
 
-        // These divides and multiplies are required to get the camera in the center of the screen
-        // and having it fill everything.
-        set_camera(&Camera2D {
-            render_target: Some(canvas),
-            zoom: vec2((WIDTH as f32).recip() * 2.0, (HEIGHT as f32).recip() * 2.0),
-            target: vec2(WIDTH as f32 / 2.0, HEIGHT as f32 / 2.0),
-            ..Default::default()
-        });
+        // this swaps the camera
+        let mut rts = RenderTargetStack::new();
         clear_background(WHITE);
         // Draw the state.
-        // Also do audio in the draw method, I guess, it doesn't really matter where you do it...
-        drawer.draw(&globals, frame_info);
+        drawer.draw(assets, frame_info, &mut rts);
 
         // Done rendering to the canvas; go back to our normal camera
         // to size the canvas
         set_default_camera();
-        clear_background(BLACK);
+        clear_background(LIGHTGRAY);
 
         // Figure out the drawbox.
         // these are how much wider/taller the window is than the content
         let (width_deficit, height_deficit) = width_height_deficit();
         draw_texture_ex(
-            canvas.texture,
+            rts.drawn_texture(),
             width_deficit / 2.0,
             height_deficit / 2.0,
             WHITE,
@@ -149,13 +137,12 @@ async fn gameloop() {
 }
 
 /// Unthreaded version of main.
-///
-/// This runs one update call, then one draw call.
 #[cfg(any(target_arch = "wasm32", not(feature = "thread_loop")))]
 async fn gameloop() {
-    // Drawing must happen on the main thread (thanks macroquad...)
-    // so updating goes over here
-    let mut globals = Globals::new().await;
+    let assets = Assets::init().await;
+    let assets = Box::leak(Box::new(assets)) as &'static Assets;
+
+    let mut controls = InputSubscriber::new();
     let mut mode_stack: Vec<Box<dyn Gamemode>> = vec![Box::new(ModeLogo::new())];
 
     let canvas = render_target(WIDTH as u32, HEIGHT as u32);
@@ -180,33 +167,17 @@ async fn gameloop() {
 
         // Update the current state.
         // To change state, return a non-None transition.
-        let mut idx = 0;
-        let drawer = loop {
-            let (drawer, transition) = mode_stack
+        for _ in 0..UPDATES_PER_DRAW {
+            controls.update();
+
+            let transition = mode_stack
                 .last_mut()
                 .unwrap()
-                .update(&mut globals, frame_info);
-            match transition {
-                Transition::None => {}
-                Transition::Push(new_mode) => mode_stack.push(new_mode),
-                Transition::Pop => {
-                    if mode_stack.len() >= 2 {
-                        mode_stack.pop();
-                    }
-                }
-                Transition::Swap(new_mode) => {
-                    if !mode_stack.is_empty() {
-                        mode_stack.pop();
-                    }
-                    mode_stack.push(new_mode)
-                }
-            }
-            idx += 1;
-            if idx == UPDATES_PER_DRAW {
-                break drawer;
-            }
-        };
+                .update(&controls, frame_info, assets);
+            transition.apply(&mut mode_stack);
+        }
 
+        frame_info.dt = macroquad::time::get_frame_time();
         // These divides and multiplies are required to get the camera in the center of the screen
         // and having it fill everything.
         set_camera(&Camera2D {
@@ -217,9 +188,9 @@ async fn gameloop() {
         });
         clear_background(WHITE);
         // Draw the state.
-        // Also do audio in the draw method, I guess, it doesn't really matter where you do it...
-        frame_info.dt = macroquad::time::get_frame_time();
-        drawer.draw(&globals, frame_info);
+        let mut rts = RenderTargetStack::new();
+        let drawer = mode_stack.last_mut().unwrap().get_draw_info();
+        drawer.draw(assets, frame_info, &mut rts);
 
         // Done rendering to the canvas; go back to our normal camera
         // to size the canvas
@@ -230,7 +201,7 @@ async fn gameloop() {
         // these are how much wider/taller the window is than the content
         let (width_deficit, height_deficit) = width_height_deficit();
         draw_texture_ex(
-            canvas.texture,
+            rts.drawn_texture(),
             width_deficit / 2.0,
             height_deficit / 2.0,
             WHITE,
