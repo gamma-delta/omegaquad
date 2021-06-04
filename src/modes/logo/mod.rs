@@ -2,17 +2,16 @@ use crate::{
     assets::Assets,
     boilerplates::{FrameInfo, Gamemode, GamemodeDrawer, RenderTargetStack, Transition},
     controls::{Control, InputSubscriber},
-    drawutils, HEIGHT, WIDTH,
+    utils::draw::{self, hexcolor},
+    HEIGHT, WIDTH,
 };
 
-use cogs_gamedev::controls::InputHandler;
+use cogs_gamedev::{chance::WeightedPicker, controls::InputHandler};
+use macroquad::prelude::Color;
+use quad_rand::compat::QuadRand;
+use rand::Rng;
 
 use std::f32::consts::TAU;
-
-const ROTATION_SPEED: f32 = -2.0;
-/// Number of "blades" of the starburst
-const BLADES: usize = 7;
-const BLADE_SPAN: f32 = BLADES as f32 * 2.0;
 
 const BANNER_DISPLAY_SIZE: f32 = WIDTH * 0.6;
 const BANNER_START_TIME: f64 = 0.25;
@@ -21,15 +20,59 @@ const BANNER_START_TIME: f64 = 0.25;
 pub struct ModeLogo {
     start_time: f64,
     first_frame: bool,
+
+    blades: usize,
+    rotation_speed: f32,
+    blade_dark: Color,
+    blade_light: Color,
 }
 
 impl ModeLogo {
     // shut up clippy
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
+        let blades = WeightedPicker::pick(
+            vec![
+                (7, 30.0),
+                (8, 10.0),
+                (6, 10.0),
+                (5, 3.0),
+                (13, 3.0),
+                (QuadRand.gen_range(3..=15), 1.0),
+            ],
+            &mut QuadRand,
+        );
+        let rotation_speed = WeightedPicker::pick(
+            vec![
+                (-2.0, 15.0),
+                (-2.5, 5.0),
+                (-1.0, 5.0),
+                (-3.0, 2.0),
+                (2.0, 2.0),
+                (1.0, 2.0),
+                (QuadRand.gen_range(-4.0..=4.0), 1.0),
+            ],
+            &mut QuadRand,
+        );
+        let (blade_dark, blade_light) = WeightedPicker::pick(
+            vec![
+                ((hexcolor(0xffee83ff), hexcolor(0xfffab3ff)), 50.0),
+                ((hexcolor(0xffd8bdff), hexcolor(0xfffab3ff)), 2.0),
+                ((hexcolor(0xd8ff94ff), hexcolor(0xf7dbffff)), 1.0),
+                ((hexcolor(0xb8b6e3ff), hexcolor(0xccffe8ff)), 1.0),
+                ((hexcolor(0x380e2bff), hexcolor(0xf0fffcff)), 0.5),
+            ],
+            &mut QuadRand,
+        );
+
         Self {
             start_time: 0.0,
             first_frame: true,
+
+            blades,
+            rotation_speed,
+            blade_dark,
+            blade_light,
         }
     }
 }
@@ -68,27 +111,31 @@ impl GamemodeDrawer for ModeLogo {
     fn draw(&self, assets: &Assets, _frame_info: FrameInfo, _rts: &mut RenderTargetStack) {
         use macroquad::prelude::*;
 
-        let dark = drawutils::hexcolor(0x21181bff);
-        let med = drawutils::hexcolor(0xffee83ff);
-        let light = drawutils::hexcolor(0xfffab3ff);
+        let background = draw::hexcolor(0x21181bff);
 
         let time_ran = macroquad::time::get_time() - self.start_time;
 
-        let bg_color = if time_ran < 0.52 { dark } else { med };
+        let bg_color = if time_ran < 0.52 {
+            background
+        } else {
+            self.blade_dark
+        };
         clear_background(bg_color);
 
         if time_ran > 1.38 {
             // Draw spinning background
-            for idx in 0..BLADES {
-                let theta1 = (2 * idx) as f32 / BLADE_SPAN * TAU + time_ran as f32 * ROTATION_SPEED;
+            let blade_span = self.blades as f32 * 2.0;
+            for idx in 0..self.blades {
+                let theta1 =
+                    (2 * idx) as f32 / blade_span * TAU + time_ran as f32 * self.rotation_speed;
                 let theta2 =
-                    (2 * idx + 1) as f32 / BLADE_SPAN * TAU + time_ran as f32 * ROTATION_SPEED;
+                    (2 * idx + 1) as f32 / blade_span * TAU + time_ran as f32 * self.rotation_speed;
 
                 let v1 = Vec2::from(theta1.sin_cos()) * WIDTH * 2.0;
                 let v2 = Vec2::from(theta2.sin_cos()) * WIDTH * 2.0;
                 let vc = Vec2::new(WIDTH / 2.0, HEIGHT / 2.0);
 
-                draw_triangle(v1, v2, vc, light);
+                draw_triangle(v1, v2, vc, self.blade_light);
             }
         }
 

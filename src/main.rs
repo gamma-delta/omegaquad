@@ -1,8 +1,10 @@
+#![feature(try_blocks)]
+
 mod assets;
 mod boilerplates;
 mod controls;
-mod drawutils;
 mod modes;
+mod utils;
 
 // `getrandom` doesn't support WASM so we use quadrand's rng for it.
 #[cfg(target_arch = "wasm32")]
@@ -12,8 +14,8 @@ use crate::{
     assets::Assets,
     boilerplates::{FrameInfo, Gamemode, RenderTargetStack},
     controls::InputSubscriber,
-    drawutils::width_height_deficit,
     modes::ModeLogo,
+    utils::draw::width_height_deficit,
 };
 
 use macroquad::prelude::*;
@@ -76,7 +78,7 @@ async fn gameloop() {
                 .last_mut()
                 .unwrap()
                 .update(&controls, frame_info, assets);
-            transition.apply(&mut mode_stack);
+            transition.apply(&mut mode_stack, &assets);
 
             #[allow(clippy::modulo_one)]
             if frame_info.frames_ran % UPDATES_PER_DRAW == 0 {
@@ -177,7 +179,7 @@ async fn gameloop() {
                 .last_mut()
                 .unwrap()
                 .update(&controls, frame_info, assets);
-            transition.apply(&mut mode_stack);
+            transition.apply(&mut mode_stack, assets);
         }
 
         frame_info.dt = macroquad::time::get_frame_time();

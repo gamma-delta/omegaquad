@@ -1,4 +1,5 @@
 /target
 
 /web_release/assets
-/web_release/game.wasm
+/web_release/*.wasm
+/web_release/*.js
