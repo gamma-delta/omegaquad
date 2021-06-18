@@ -1,7 +1,7 @@
-use std::f64::consts::TAU;
+use std::{f64::consts::TAU, iter::FlatMap};
 
 use anyhow::{bail, Context};
-use macroquad::prelude::{Color, Texture2D, Vec2, WHITE};
+use macroquad::prelude::{Color, Rect, Texture2D, Vec2, WHITE};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -58,38 +58,34 @@ impl Billboard {
         }
     }
 
-    /// Draw this to the screen, with the given patch9 background
-    pub fn draw(&self, assets: &Assets) {
-        use macroquad::prelude::*;
-
-        draw::patch9(
-            self.tile_size,
-            self.pos.x,
-            self.pos.y,
-            self.width,
-            self.height,
-            self.patch9,
-        );
-
-        // Place to draw the BOTTOM-LEFT of the current character
-        // this is so changing text sizes halfway through a line
-        // won't result in a bumpy baseline
+    /// Iterator over characters, slice X's, fonts, and draw positions to draw
+    /// everything on this billboard
+    fn draw_iter(&self) -> impl Iterator<Item = BillboardCharEntry> + '_ {
         let mut cursor = self.pos + self.offset;
-        // and save this x-pos
         let sideline = cursor.x;
 
-        for span in self.text.iter() {
-            let font_tex = span.markup.font;
-            let char_width = font_tex.width() / CHARACTER_COUNT as f32;
-            let char_height = font_tex.height();
+        // Must do lots of crazy juggling to get this to work
+        // and not implicitly copy the cursor
+        self.text
+            .iter()
+            .enumerate()
+            .flat_map(|(span_idx, span)| {
+                span.text
+                    .bytes()
+                    .enumerate()
+                    .map(move |(i, c)| (span_idx, span, i, c))
+            })
+            .flat_map(move |(span_idx, span, idx, c)| {
+                let font_tex = span.markup.font;
+                let char_width = font_tex.width() / CHARACTER_COUNT as f32;
+                let char_height = font_tex.height();
 
-            'chars: for (idx, c) in span.text.bytes().enumerate() {
                 let slice_idx = match c {
                     b' '..=b'~' => c - 0x20,
                     b'\n' => {
                         cursor.x = sideline;
                         cursor.y += char_height + span.markup.vert_space;
-                        continue 'chars;
+                        return None;
                     }
                     // otherwise just do the non-printing character
                     _ => 127,
@@ -105,20 +101,76 @@ impl Billboard {
                     0.0
                 };
 
-                draw_texture_ex(
-                    font_tex,
-                    cursor.x,
-                    cursor.y - char_height + wave_amt,
-                    span.markup.color,
-                    DrawTextureParams {
-                        source: Some(Rect::new(sx, 0.0, char_width, char_height)),
-                        ..Default::default()
-                    },
-                );
+                let out = BillboardCharEntry {
+                    ch: c,
+                    src_rect: Rect::new(sx, 0.0, char_width, char_height),
+                    dest_rect: Rect::new(
+                        cursor.x,
+                        cursor.y - char_height + wave_amt,
+                        char_width,
+                        char_height,
+                    ),
+                    color: span.markup.color,
+                    texture: font_tex,
 
+                    span_idx,
+                    char_idx: idx,
+                };
                 cursor.x += char_width + span.markup.kerning;
-            }
+                Some(out)
+            })
+    }
+
+    /// Draw this to the screen, with the given patch9 background
+    pub fn draw(&self) {
+        use macroquad::prelude::*;
+
+        draw::patch9(
+            self.tile_size,
+            self.pos.x,
+            self.pos.y,
+            self.width,
+            self.height,
+            self.patch9,
+        );
+
+        for entry in self.draw_iter() {
+            draw_texture_ex(
+                entry.texture,
+                entry.dest_rect.x,
+                entry.dest_rect.y,
+                entry.color,
+                DrawTextureParams {
+                    source: Some(entry.src_rect),
+                    ..Default::default()
+                },
+            );
         }
+    }
+
+    /// Get the  char the given pixel on the screen is over.
+    /// Returns `(span_idx, char_idx, char)`, or None if the point isn't in any characters.
+    ///
+    /// Note that this only checks characters. So if you want the player to be able to click on whole
+    /// rows of text (for example), even off a character, you need to pad the whole line with spaces.
+    ///
+    /// Because this is based on the exact bounds of each character, it's very possible to barely miss clicking on
+    /// something, click in-between characters, etc.
+    /// So, the distance to a char boundary must be *under* `tolerance` to make it work.
+    pub fn get_char_at_pixel(&self, pos: Vec2, tolerance: f32) -> Option<(usize, usize, u8)> {
+        self.draw_iter().find_map(|entry| {
+            let mut tolerance_rect = entry.dest_rect;
+            tolerance_rect.x -= tolerance;
+            tolerance_rect.y -= tolerance;
+            tolerance_rect.w += tolerance;
+            tolerance_rect.h += tolerance;
+
+            if tolerance_rect.contains(pos) {
+                Some((entry.span_idx, entry.char_idx, entry.ch))
+            } else {
+                None
+            }
+        })
     }
 
     /// Generate some rainbowy text spans from just a string.
@@ -133,6 +185,8 @@ impl Billboard {
     ///   in that order.
     /// - `k`: Kerning. `data` is a float indicating the new kerning.
     /// - `s`: Vertical space. `data` is a float indicating the new vertical space.
+    ///
+    /// In addition, all newlines create a new text span. (The newline character is in the span to the left of it.)
     ///
     /// Note that vertical space will only apply if the newline is in the vertical space tag.
     pub fn from_markup(markup: String, font: Texture2D) -> anyhow::Result<Vec<TextSpan>> {
@@ -273,9 +327,27 @@ impl Billboard {
         // and now map this to text spans
         Ok(texts
             .into_iter()
-            .map(|(text, markup)| TextSpan {
-                text: text.to_owned(),
-                markup,
+            .flat_map(|(text, markup)| {
+                let splits = text.split('\n').collect::<Vec<_>>();
+                // Append newlines to all *but* the last.
+                // why is this returned in this garbage order
+                if let Some((last, front)) = splits.split_last() {
+                    front
+                        .iter()
+                        .map(|text| TextSpan {
+                            text: format!("{}\n", text),
+                            markup,
+                        })
+                        .chain(std::iter::once(TextSpan {
+                            text: last.to_string(),
+                            markup,
+                            // must collect to get a consistent type
+                        }))
+                        .collect::<Vec<_>>()
+                } else {
+                    // Dunno how this happened, even an empty string should split...
+                    Vec::new()
+                }
             })
             .collect())
     }
@@ -299,4 +371,17 @@ impl TagKind {
             oh_no => bail!("Unknown tag character `{}`", oh_no),
         })
     }
+}
+
+struct BillboardCharEntry {
+    ch: u8,
+    src_rect: Rect,
+    dest_rect: Rect,
+    color: Color,
+    texture: Texture2D,
+
+    /// Which span are we in
+    span_idx: usize,
+    /// And what character in that
+    char_idx: usize,
 }

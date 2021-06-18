@@ -93,7 +93,7 @@ impl Gamemode for ModeLogo {
         }
 
         if macroquad::time::get_time() - self.start_time > 5.0
-            || controls.clicked_down(Control::Advance)
+            || controls.clicked_down(Control::Click)
         {
             macroquad::audio::stop_sound(assets.sounds.title_jingle);
 
