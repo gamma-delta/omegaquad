@@ -9,7 +9,6 @@ use once_cell::sync::Lazy;
 
 use std::path::PathBuf;
 
-#[derive(Clone)]
 pub struct Assets {
     pub textures: Textures,
     pub sounds: Sounds,
@@ -24,20 +23,37 @@ impl Assets {
     }
 }
 
-#[derive(Clone)]
 pub struct Textures {
+    pub fonts: Fonts,
+
     pub title_banner: Texture2D,
+    pub billboard_patch9: Texture2D,
 }
 
 impl Textures {
     async fn init() -> Self {
         Self {
+            fonts: Fonts::init().await,
             title_banner: texture("title/banner").await,
+            billboard_patch9: texture("ui/billboard_patch9").await,
         }
     }
 }
 
-#[derive(Clone)]
+pub struct Fonts {
+    pub small: Texture2D,
+    pub medium: Texture2D,
+}
+
+impl Fonts {
+    async fn init() -> Self {
+        Self {
+            small: texture("ui/font_small").await,
+            medium: texture("ui/font_medium").await,
+        }
+    }
+}
+
 pub struct Sounds {
     pub title_jingle: Sound,
 }

@@ -1,9 +1,4 @@
-use crate::{assets::Assets, controls::InputSubscriber, HEIGHT, WIDTH};
-
-use macroquad::{
-    camera::{set_camera, Camera2D},
-    prelude::{render_target, vec2, FilterMode, Texture2D},
-};
+use crate::{assets::Assets, controls::InputSubscriber};
 
 /// Things the engine can update and draw
 pub trait Gamemode {
@@ -27,7 +22,7 @@ pub trait Gamemode {
 
 /// Data on how to draw a state
 pub trait GamemodeDrawer: Send {
-    fn draw(&self, assets: &Assets, frame_info: FrameInfo, render_targets: &mut RenderTargetStack);
+    fn draw(&self, assets: &Assets, frame_info: FrameInfo);
 }
 
 /// Information about a frame.
@@ -93,75 +88,5 @@ impl Transition {
                 }
             }
         }
-    }
-}
-
-/// A stack of render targets (and cameras).
-///
-/// After all draw calls are over, the bottom-most canvas will be drawn to the screen.
-pub struct RenderTargetStack {
-    stack: Vec<Camera2D>,
-}
-
-impl RenderTargetStack {
-    /// Make a new stack with the default target on the bottom
-    pub fn new() -> Self {
-        let mut out = Self {
-            stack: Vec::with_capacity(1),
-        };
-        out.push_default();
-        out
-    }
-
-    /// Push a new default target onto the stack.
-    /// Further draws will be done to this top target
-    pub fn push_default(&mut self) {
-        self.push(Self::default_target());
-    }
-
-    /// Push a new custom camera.
-    pub fn push(&mut self, cam: Camera2D) {
-        set_camera(&cam);
-        self.stack.push(cam);
-    }
-
-    /// Pop the stack, and set the current render target to the new top.
-    /// Return the texture that's been drawn (or None if the camera at the top
-    /// didn't have any render target).
-    ///
-    /// Panics if the stack becomes empty.
-    pub fn pop(&mut self) -> Option<Texture2D> {
-        if self.stack.len() <= 1 {
-            panic!(
-                "Tried to pop a RenderTargetStack when it was too short ({})",
-                self.stack.len()
-            );
-        }
-        let cam = self.stack.pop().unwrap();
-        set_camera(self.stack.last().unwrap());
-        cam.render_target.map(|rt| rt.texture)
-    }
-
-    /// Get the completed render target off the bottom of the stack.
-    pub fn drawn_texture(self) -> Texture2D {
-        self.stack.first().unwrap().render_target.unwrap().texture
-    }
-
-    fn default_target() -> Camera2D {
-        let canvas = render_target(WIDTH as u32, HEIGHT as u32);
-        canvas.texture.set_filter(FilterMode::Nearest);
-        Camera2D {
-            render_target: Some(canvas),
-            zoom: vec2((WIDTH as f32).recip() * 2.0, (HEIGHT as f32).recip() * 2.0),
-            target: vec2(WIDTH as f32 / 2.0, HEIGHT as f32 / 2.0),
-            ..Default::default()
-        }
-    }
-
-    /// Interact directly with the camera stack.
-    ///
-    /// For advanced usage only.
-    pub fn get_stack(&mut self) -> &mut Vec<Camera2D> {
-        &mut self.stack
     }
 }

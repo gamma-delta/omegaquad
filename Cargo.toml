@@ -21,6 +21,7 @@ rand = { version = "0.8.3" }
 quad-rand = { version = "0.2.1", features = ["rand"] }
 getrandom = { version = "0.2.2", features = ["custom"] }
 anyhow = "1.0.40"
+regex = "1.5.4"
 
 [features]
 default = ["thread_loop"]

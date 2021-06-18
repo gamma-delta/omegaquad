@@ -1,6 +1,6 @@
 use crate::{
     assets::Assets,
-    boilerplates::{FrameInfo, Gamemode, GamemodeDrawer, RenderTargetStack, Transition},
+    boilerplates::{FrameInfo, Gamemode, GamemodeDrawer, Transition},
     controls::{Control, InputSubscriber},
     utils::draw::{self, hexcolor},
     HEIGHT, WIDTH,
@@ -12,6 +12,8 @@ use quad_rand::compat::QuadRand;
 use rand::Rng;
 
 use std::f32::consts::TAU;
+
+use super::ModeExample;
 
 const BANNER_DISPLAY_SIZE: f32 = WIDTH * 0.6;
 const BANNER_START_TIME: f64 = 0.25;
@@ -44,8 +46,8 @@ impl ModeLogo {
         );
         let rotation_speed = WeightedPicker::pick(
             vec![
-                (-2.0, 15.0),
-                (-2.5, 5.0),
+                (-1.8, 15.0),
+                (-2.3, 5.0),
                 (-1.0, 5.0),
                 (-3.0, 2.0),
                 (2.0, 2.0),
@@ -93,9 +95,10 @@ impl Gamemode for ModeLogo {
         if macroquad::time::get_time() - self.start_time > 5.0
             || controls.clicked_down(Control::Advance)
         {
-            // Put your "title screen" state here or something!
-            // Right now it just loops
-            Transition::Swap(Box::new(ModeLogo::new()))
+            macroquad::audio::stop_sound(assets.sounds.title_jingle);
+
+            // Put your next state here!
+            Transition::Swap(Box::new(ModeExample::new(assets)))
         } else {
             Transition::None
         }
@@ -108,7 +111,7 @@ impl Gamemode for ModeLogo {
 }
 
 impl GamemodeDrawer for ModeLogo {
-    fn draw(&self, assets: &Assets, _frame_info: FrameInfo, _rts: &mut RenderTargetStack) {
+    fn draw(&self, assets: &Assets, _frame_info: FrameInfo) {
         use macroquad::prelude::*;
 
         let background = draw::hexcolor(0x21181bff);

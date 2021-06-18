@@ -12,7 +12,7 @@ mod wasm_random_impl;
 
 use crate::{
     assets::Assets,
-    boilerplates::{FrameInfo, Gamemode, RenderTargetStack},
+    boilerplates::{FrameInfo, Gamemode},
     controls::InputSubscriber,
     modes::ModeLogo,
     utils::draw::width_height_deficit,
@@ -20,8 +20,8 @@ use crate::{
 
 use macroquad::prelude::*;
 
-const WIDTH: f32 = 640.0;
-const HEIGHT: f32 = 480.0;
+const WIDTH: f32 = 320.0;
+const HEIGHT: f32 = 240.0;
 const ASPECT_RATIO: f32 = WIDTH / HEIGHT;
 
 const UPDATES_PER_DRAW: u64 = 100;
@@ -91,6 +91,9 @@ async fn gameloop() {
         }
     });
 
+    let canvas = render_target(WIDTH as u32, HEIGHT as u32);
+    canvas.texture.set_filter(FilterMode::Nearest);
+
     // Draw loop
     let mut frame_info = FrameInfo {
         dt: 0.0,
@@ -108,22 +111,29 @@ async fn gameloop() {
             Err(TryRecvError::Disconnected) => panic!("The draw channel closed!"),
         };
 
-        // this swaps the camera
-        let mut rts = RenderTargetStack::new();
-        clear_background(WHITE);
         // Draw the state.
-        drawer.draw(assets, frame_info, &mut rts);
+        push_camera_state();
+        set_camera(&Camera2D {
+            render_target: Some(canvas),
+            zoom: vec2((WIDTH as f32).recip() * 2.0, (HEIGHT as f32).recip() * 2.0),
+            target: vec2(WIDTH as f32 / 2.0, HEIGHT as f32 / 2.0),
+            ..Default::default()
+        });
+
+        clear_background(WHITE);
+        drawer.draw(assets, frame_info);
 
         // Done rendering to the canvas; go back to our normal camera
         // to size the canvas
-        set_default_camera();
-        clear_background(LIGHTGRAY);
+        pop_camera_state();
+
+        clear_background(BLACK);
 
         // Figure out the drawbox.
         // these are how much wider/taller the window is than the content
         let (width_deficit, height_deficit) = width_height_deficit();
         draw_texture_ex(
-            rts.drawn_texture(),
+            canvas.texture,
             width_deficit / 2.0,
             height_deficit / 2.0,
             WHITE,
@@ -152,11 +162,11 @@ async fn gameloop() {
 
     let canvas = render_target(WIDTH as u32, HEIGHT as u32);
     canvas.texture.set_filter(FilterMode::Nearest);
+
     let mut frame_info = FrameInfo {
         dt: UPDATE_DT,
         frames_ran: 0,
     };
-
     let mut mouse_entropy = 0.0f64;
     loop {
         if frame_info.frames_ran <= 300 {
@@ -183,6 +193,8 @@ async fn gameloop() {
         }
 
         frame_info.dt = macroquad::time::get_frame_time();
+
+        push_camera_state();
         // These divides and multiplies are required to get the camera in the center of the screen
         // and having it fill everything.
         set_camera(&Camera2D {
@@ -193,20 +205,19 @@ async fn gameloop() {
         });
         clear_background(WHITE);
         // Draw the state.
-        let mut rts = RenderTargetStack::new();
         let drawer = mode_stack.last_mut().unwrap().get_draw_info();
-        drawer.draw(assets, frame_info, &mut rts);
+        drawer.draw(assets, frame_info);
 
         // Done rendering to the canvas; go back to our normal camera
         // to size the canvas
-        set_default_camera();
+        pop_camera_state();
         clear_background(BLACK);
 
         // Figure out the drawbox.
         // these are how much wider/taller the window is than the content
         let (width_deficit, height_deficit) = width_height_deficit();
         draw_texture_ex(
-            rts.drawn_texture(),
+            canvas.texture,
             width_deficit / 2.0,
             height_deficit / 2.0,
             WHITE,
@@ -220,7 +231,6 @@ async fn gameloop() {
         );
 
         frame_info.frames_ran += 1;
-        frame_info.dt = macroquad::time::get_frame_time();
         next_frame().await
     }
 }

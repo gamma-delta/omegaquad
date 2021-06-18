@@ -29,3 +29,48 @@ pub fn width_height_deficit() -> (f32, f32) {
         (0.0f32, screen_height() - expected_height)
     }
 }
+
+/// Draw a 9patch of a 3x3 grid of tiles.
+pub fn patch9(
+    tile_size: f32,
+    corner_x: f32,
+    corner_y: f32,
+    width: usize,
+    height: usize,
+    tex: Texture2D,
+) {
+    for x in 0..width {
+        for y in 0..height {
+            let px = corner_x + x as f32 * tile_size;
+            let py = corner_y + y as f32 * tile_size;
+
+            let sx = tile_size
+                * if x == 0 {
+                    0.0
+                } else if x == width - 1 {
+                    2.0
+                } else {
+                    1.0
+                };
+            let sy = tile_size
+                * if y == 0 {
+                    0.0
+                } else if y == height - 1 {
+                    2.0
+                } else {
+                    1.0
+                };
+
+            draw_texture_ex(
+                tex,
+                px,
+                py,
+                WHITE,
+                DrawTextureParams {
+                    source: Some(Rect::new(sx, sy, 16.0, 16.0)),
+                    ..Default::default()
+                },
+            );
+        }
+    }
+}
