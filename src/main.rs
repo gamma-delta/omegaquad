@@ -44,6 +44,32 @@ fn window_conf() -> Conf {
 
 #[macroquad::main(window_conf)]
 async fn main() {
+    let loading = Texture2D::from_file_with_format(
+        include_bytes!("../assets/textures/title/loading.png"),
+        None,
+    );
+    loading.set_filter(FilterMode::Nearest);
+
+    let (miss_x, miss_y) = width_height_deficit();
+
+    let real_width = loading.width() * screen_width() / WIDTH;
+    let real_height = loading.height() * screen_height() / HEIGHT;
+
+    clear_background(BLACK);
+    draw_texture_ex(
+        loading,
+        (screen_width() - real_width - (real_width * 0.125) - miss_x).floor(),
+        (screen_height() - real_height - (real_width * 0.125) - miss_y).floor(),
+        WHITE,
+        DrawTextureParams {
+            dest_size: Some(vec2(real_width, real_height)),
+            ..Default::default()
+        },
+    );
+    // Why do we have to have two? Beats me.
+    next_frame().await;
+    next_frame().await;
+
     gameloop().await;
 }
 
@@ -78,7 +104,7 @@ async fn gameloop() {
                 .last_mut()
                 .unwrap()
                 .update(&controls, frame_info, assets);
-            transition.apply(&mut mode_stack, &assets);
+            transition.apply(&mut mode_stack, assets);
 
             #[allow(clippy::modulo_one)]
             if frame_info.frames_ran % UPDATES_PER_DRAW == 0 {
