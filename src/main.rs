@@ -1,10 +1,10 @@
 #![feature(try_blocks)]
 
-mod assets;
-mod boilerplates;
-mod controls;
-mod modes;
-mod utils;
+pub mod assets;
+pub mod boilerplates;
+pub mod controls;
+pub mod modes;
+pub mod utils;
 
 // `getrandom` doesn't support WASM so we use quadrand's rng for it.
 #[cfg(target_arch = "wasm32")]
@@ -12,20 +12,24 @@ mod wasm_random_impl;
 
 use crate::{
     assets::Assets,
-    boilerplates::{FrameInfo, Gamemode},
+    boilerplates::{FrameInfo, Gamemode, GamemodeDrawer},
     controls::InputSubscriber,
-    modes::ModeLogo,
+    modes::{DispatchMode, ModeLogo},
     utils::draw::width_height_deficit,
 };
 
-use macroquad::prelude::*;
+use ::rand::Rng;
+use macroquad::{prelude::*, rand::compat::QuadRand};
 
-const WIDTH: f32 = 320.0;
-const HEIGHT: f32 = 240.0;
-const ASPECT_RATIO: f32 = WIDTH / HEIGHT;
+pub const WIDTH: f32 = 320.0;
+pub const HEIGHT: f32 = 240.0;
+pub const ASPECT_RATIO: f32 = WIDTH / HEIGHT;
 
-const UPDATES_PER_DRAW: u64 = 100;
-const UPDATE_DT: f32 = 1.0 / (30.0 * UPDATES_PER_DRAW as f32);
+pub const FRAMERATE: u64 = 30;
+pub const UPDATES_PER_DRAW: u64 = 1;
+pub const UPDATE_DT: f32 = 1.0 / (FRAMERATE as f32 * UPDATES_PER_DRAW as f32);
+
+const ENTROPY_ACCUMULATE_TIME: u64 = 300;
 
 /// The `macroquad::main` macro uses this.
 fn window_conf() -> Conf {
@@ -45,7 +49,7 @@ fn window_conf() -> Conf {
 #[macroquad::main(window_conf)]
 async fn main() {
     let loading = Texture2D::from_file_with_format(
-        include_bytes!("../assets/textures/title/loading.png"),
+        include_bytes!("../assets/textures/logo/loading.png"),
         None,
     );
     loading.set_filter(FilterMode::Nearest);
@@ -90,13 +94,20 @@ async fn gameloop() {
     // Drawing must happen on the main thread (thanks macroquad...)
     // so updating goes over here
     let _update_handle = thread::spawn(move || {
-        let mut mode_stack: Vec<Box<dyn Gamemode>> = vec![Box::new(ModeLogo::new())];
+        let mut mode_stack: Vec<DispatchMode> = vec![ModeLogo::new().into()];
         let mut frame_info = FrameInfo {
             dt: UPDATE_DT,
             frames_ran: 0,
         };
 
         loop {
+            if frame_info.frames_ran < ENTROPY_ACCUMULATE_TIME {
+                let (mx, my) = mouse_position();
+                macroquad::rand::srand(
+                    QuadRand.gen::<u64>() ^ (((mx.to_bits() as u64) << 32) | my.to_bits() as u64),
+                );
+            }
+
             controls.update();
             // Update the current state.
             // To change state, return a non-None transition.
@@ -184,7 +195,7 @@ async fn gameloop() {
     let assets = Box::leak(Box::new(assets)) as &'static Assets;
 
     let mut controls = InputSubscriber::new();
-    let mut mode_stack: Vec<Box<dyn Gamemode>> = vec![Box::new(ModeLogo::new())];
+    let mut mode_stack: Vec<DispatchMode> = vec![ModeLogo::new().into()];
 
     let canvas = render_target(WIDTH as u32, HEIGHT as u32);
     canvas.texture.set_filter(FilterMode::Nearest);
@@ -193,15 +204,12 @@ async fn gameloop() {
         dt: UPDATE_DT,
         frames_ran: 0,
     };
-    let mut mouse_entropy = 0.0f64;
     loop {
-        if frame_info.frames_ran <= 300 {
+        if frame_info.frames_ran < ENTROPY_ACCUMULATE_TIME {
             let (mx, my) = mouse_position();
-            // 7919 is the last prime on wikipedia's list of prime numbers
-            mouse_entropy = mouse_entropy.tan() + mx as f64 + my as f64 * 7919.0;
-            if frame_info.frames_ran == 60 {
-                macroquad::rand::srand(mouse_entropy.to_bits());
-            }
+            macroquad::rand::srand(
+                QuadRand.gen::<u64>() ^ (((mx.to_bits() as u64) << 32) | my.to_bits() as u64),
+            );
         }
 
         frame_info.dt = UPDATE_DT;
@@ -259,4 +267,14 @@ async fn gameloop() {
         frame_info.frames_ran += 1;
         next_frame().await
     }
+}
+
+mod prelude {
+    pub use crate::assets::Assets;
+    pub use crate::boilerplates::*;
+    pub use crate::controls::{Control, InputSubscriber};
+    pub use crate::modes::{DispatchDrawer, DispatchMode};
+    pub use crate::utils;
+
+    pub use crate::{ASPECT_RATIO, FRAMERATE, HEIGHT, WIDTH};
 }

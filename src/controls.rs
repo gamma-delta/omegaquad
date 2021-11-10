@@ -31,6 +31,7 @@ pub struct InputSubscriber {
 }
 
 impl InputSubscriber {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         // the science kid
         let sid = register_input_subscriber();

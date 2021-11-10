@@ -2,6 +2,7 @@ use crate::{
     assets::Assets,
     boilerplates::{FrameInfo, Gamemode, GamemodeDrawer, Transition},
     controls::{Control, InputSubscriber},
+    modes::DispatchDrawer,
     utils::draw::{self, hexcolor},
     HEIGHT, WIDTH,
 };
@@ -89,24 +90,24 @@ impl Gamemode for ModeLogo {
         if self.first_frame {
             self.first_frame = false;
             self.start_time = macroquad::time::get_time();
-            macroquad::audio::play_sound_once(assets.sounds.title_jingle);
+            macroquad::audio::play_sound_once(assets.sounds.logo_jingle);
         }
 
         if macroquad::time::get_time() - self.start_time > 5.0
             || controls.clicked_down(Control::Click)
         {
-            macroquad::audio::stop_sound(assets.sounds.title_jingle);
+            macroquad::audio::stop_sound(assets.sounds.logo_jingle);
 
             // Put your next state here!
-            Transition::Swap(Box::new(ModeExample::new(assets)))
+            Transition::Swap(ModeExample::new(assets).into())
         } else {
             Transition::None
         }
     }
 
-    fn get_draw_info(&mut self) -> Box<dyn GamemodeDrawer> {
+    fn get_draw_info(&mut self) -> DispatchDrawer {
         // I am my own drawer
-        Box::new(self.clone())
+        self.clone().into()
     }
 }
 

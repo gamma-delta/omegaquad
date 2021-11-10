@@ -1,6 +1,12 @@
-use crate::{assets::Assets, controls::InputSubscriber};
+use crate::{
+    assets::Assets,
+    controls::InputSubscriber,
+    modes::{DispatchDrawer, DispatchMode},
+};
+use enum_dispatch::enum_dispatch;
 
 /// Things the engine can update and draw
+#[enum_dispatch]
 pub trait Gamemode {
     /// Update the state.
     ///
@@ -13,14 +19,16 @@ pub trait Gamemode {
     ) -> Transition;
 
     /// Gather information about how to draw this state.
-    fn get_draw_info(&mut self) -> Box<dyn GamemodeDrawer>;
+    fn get_draw_info(&mut self) -> DispatchDrawer;
 
     /// When a `Transition` finishes and things are popped off to reveal this gamemode,
     /// this function is called.
+    #[allow(unused_variables)]
     fn on_resume(&mut self, assets: &Assets) {}
 }
 
 /// Data on how to draw a state
+#[enum_dispatch]
 pub trait GamemodeDrawer: Send {
     fn draw(&self, assets: &Assets, frame_info: FrameInfo);
 }
@@ -43,19 +51,20 @@ pub enum Transition {
     /// Do nothing
     None,
     /// Pop the top mode off and replace it with this
-    Swap(Box<dyn Gamemode>),
+    Swap(DispatchMode),
     /// Push this mode onto the stack
-    Push(Box<dyn Gamemode>),
+    Push(DispatchMode),
     /// Pop the top mode off the stack
     Pop,
     /// The most customizable: pop N entries off the stack, then push some new ones.
     /// The last entry in the vec will become the top of the stack.
-    PopNAndPush(usize, Vec<Box<dyn Gamemode>>),
+    PopNAndPush(usize, Vec<DispatchMode>),
 }
 
 impl Transition {
     /// Apply the transition
-    pub fn apply(self, stack: &mut Vec<Box<dyn Gamemode>>, assets: &Assets) {
+    pub fn apply(self, stack: &mut Vec<DispatchMode>, assets: &Assets) {
+        let reveal = !matches!(&self, &Transition::None);
         match self {
             Transition::None => {}
             Transition::Swap(new) => {
@@ -72,7 +81,6 @@ impl Transition {
                 // this would be very bad otherwise
                 if stack.len() >= 2 {
                     stack.pop();
-                    stack.last_mut().unwrap().on_resume(&assets)
                 }
             }
             Transition::PopNAndPush(count, mut news) => {
@@ -80,13 +88,13 @@ impl Transition {
                 let trunc_len = lower_limit.max(stack.len() - count);
                 stack.truncate(trunc_len);
 
-                if news.is_empty() {
-                    // we only popped, so the last is revealed!
-                    stack.last_mut().unwrap().on_resume(assets);
-                } else {
+                if !news.is_empty() {
                     stack.append(&mut news);
                 }
             }
+        }
+        if reveal {
+            stack.last_mut().unwrap().on_resume(assets);
         }
     }
 }

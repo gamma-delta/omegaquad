@@ -7,9 +7,10 @@ use crate::{
     controls::{Control, InputSubscriber},
     utils::{
         draw::{self, mouse_position_pixel},
-        profile::Profile,
+        profile::PersistentStorage,
         text::{Billboard, Markup, TextSpan, Wave},
     },
+    modes::DispatchDrawer,
 };
 
 /// Example gamemode that draws a cool billboard demo
@@ -20,7 +21,7 @@ pub struct ModeExample {
 
 impl ModeExample {
     pub fn new(assets: &Assets) -> Self {
-        let mut profile = Profile::get();
+        let mut profile = PersistentStorage::get();
         profile.open_count += 1;
 
         let main_board = Billboard::new(
@@ -136,7 +137,7 @@ impl Gamemode for ModeExample {
     fn update(
         &mut self,
         controls: &InputSubscriber,
-        frame_info: FrameInfo,
+        _frame_info: FrameInfo,
         assets: &Assets,
     ) -> Transition {
         if controls.clicked_down(Control::Click) {
@@ -157,13 +158,13 @@ impl Gamemode for ModeExample {
         Transition::None
     }
 
-    fn get_draw_info(&mut self) -> Box<dyn GamemodeDrawer> {
-        Box::new(self.clone())
+    fn get_draw_info(&mut self) -> DispatchDrawer {
+        self.clone().into()
     }
 }
 
 impl GamemodeDrawer for ModeExample {
-    fn draw(&self, assets: &Assets, frame_info: FrameInfo) {
+    fn draw(&self, _assets: &Assets, _frame_info: FrameInfo) {
         clear_background(draw::hexcolor(0x110011ff));
 
         for bb in self.billboards.iter() {
